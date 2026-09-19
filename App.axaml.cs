@@ -186,7 +186,7 @@ public partial class App : Application
         _hotkeys.Pressed += (_, _) =>
         {
             Logger.Info("HotkeyService: hotkey pressed -> show HUD");
-            Dispatcher.UIThread.Post(() => _ = TriggerHudAsync(checkAlerts: false));
+            Dispatcher.UIThread.Post(() => _ = TriggerHudAsync(checkAlerts: false, replayIntro: false));
         };
         _hotkeys.Start();
         ApplyHotkey(_settings);
@@ -234,7 +234,12 @@ public partial class App : Application
 
     /// <summary>弹出电量 HUD（真实电池数据 + 完整三态动画）。</summary>
     /// <param name="checkAlerts">是否顺带检查低电量 / 充满提醒。插拔电源时为 true，快捷键唤起时为 false。</param>
-    private async Task TriggerHudAsync(bool checkAlerts = true)
+    /// <param name="replayIntro">
+    /// HUD 正在播三态动画时是否重播开场。快捷键唤起传 false —— 重播会先撤掉上一轮动画，
+    /// 画面会"灭"一下再重新弹出电标；传 false 时 HudWindow 改成续住当前停留段。
+    /// 插拔电源 / 托盘预览保持 true（状态变了就该重新播一遍）。
+    /// </param>
+    private async Task TriggerHudAsync(bool checkAlerts = true, bool replayIntro = true)
     {
         if (_hud is null) return;
 
@@ -246,7 +251,7 @@ public partial class App : Application
 
         // 文案/波纹跟着真实电源状态走：未插电时不该再显示「超充模式」
         var mode = acOnline ? HudPlayMode.Charge : HudPlayMode.Battery;
-        await _hud.ShowAndPlayAsync(snapshot, acOnline, mode);
+        await _hud.ShowAndPlayAsync(snapshot, acOnline, mode, replayIntro: replayIntro);
         // 检查提醒条件
         if (checkAlerts && snapshot is not null)
             CheckAlerts(snapshot);

@@ -111,6 +111,51 @@ internal static class HudAnimations
         return introFrac + (cue - IntroEndCue) / (1 - IntroEndCue) * (1 - introFrac);
     }
 
+    /// <summary>时长设置的安全区间（秒）。</summary>
+    private static double ClampedDuration(AnimationOptions o) => Math.Clamp(o.DurationSeconds, 3d, 10d);
+
+    /// <summary>
+    /// 入场段固定时长（秒）：cue 0→0.42 的绝对时间恒为 0.42×6s = 2.52s，
+    /// 与时长设置无关（见 MapCue）。用来判断"开场是否已经走完"。
+    /// </summary>
+    public static double IntroSeconds => IntroEndCue * BaselineSeconds;
+
+    /// <summary>C 态停留段时长（秒）：随时长设置伸缩，即收尾前的有效展示时间。</summary>
+    public static double DwellSeconds(AnimationOptions o)
+        => (MapCue(o, THoldC) - MapCue(o, IntroEndCue)) * ClampedDuration(o);
+
+    /// <summary>
+    /// 收尾（整体缩小）开始的绝对时刻（秒）。超过它画面已经在缩没，再度唤起
+    /// 按"重播开场"处理反而更自然（那时屏幕上本来就没有内容，看不到闪灭）。
+    /// </summary>
+    public static double CloseStartSeconds(AnimationOptions o)
+        => MapCue(o, THoldC) * ClampedDuration(o);
+
+    /// <summary>
+    /// 「续住 C 态」的收尾动画：画面保持不动（scale 1）停留 <see cref="DwellSeconds"/>，
+    /// 再整体缩回。播放中再次唤起时用它替换整条时间线 —— 不重播入场，
+    /// 相当于把停留计时重新开始，全程画面连续（不会先"灭"一下再重新弹出电标）。
+    ///
+    /// 之所以只跑这一路：C 态停留段里其余 16 路动画都是静止值（见各条时间线的最后一个
+    /// KeyFrame），把它们钉成局部值即可，只有 ScaleHost 的收尾需要真正再动一次。
+    /// </summary>
+    public static Animation DwellTail(AnimationOptions o)
+    {
+        double hold = DwellSeconds(o);
+        double close = ClampedDuration(o) * (TClose - THoldC);  // 收尾时长按完整时间线的同一比例
+        double total = Math.Max(0.05d, hold + close);
+
+        var a = new Animation
+        {
+            Duration = TimeSpan.FromSeconds(total),
+            FillMode = FillMode.Forward,
+        };
+        a.Children.Add(KF(0d, null, SX(1d), SY(1d)));
+        a.Children.Add(KF(Math.Clamp(hold / total, 0d, 0.99d), KS_In, SX(1d), SY(1d)));
+        a.Children.Add(KF(1d, KS_In, SX(0d), SY(0d)));
+        return a;
+    }
+
     // ===================================================================
 
     /// <summary>胶囊圆角：30(全圆) ↔ 18(矩形圆角)。</summary>
