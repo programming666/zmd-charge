@@ -16,10 +16,17 @@ using EndfieldCharge.Settings;
 
 namespace EndfieldCharge.Views;
 
-/// <summary>完整三态动画的文案主题：充电（超充模式）或省电模式。</summary>
+/// <summary>
+/// 完整三态动画的主题。三者共用同一条时间线（弹电标 → 撑高显示模式名 → 收窄显示电量），
+/// 只有文案与波纹方向不同：充电向外扩散（能量注入），电池模式向内收拢（能量流出）。
+/// </summary>
 public enum HudPlayMode
 {
     Charge,
+
+    /// <summary>未插电（电池供电）。</summary>
+    Battery,
+
     PowerSaver,
 }
 
@@ -114,9 +121,13 @@ public partial class HudWindow : Window
     {
         ApplyBattery(battery, acOnline);
 
-        // 文案主题：充电 = 超充模式；省电 = 省电模式
-        TagLineText.Text = mode == HudPlayMode.PowerSaver ? Localization.TagLineSaver : Localization.TagLine;
-        TitleText.Text = mode == HudPlayMode.PowerSaver ? Localization.TitleSaver : Localization.TitleMode;
+        // 文案主题：充电 = 超充模式；电池 = 电池模式；省电 = 省电模式
+        (TagLineText.Text, TitleText.Text) = mode switch
+        {
+            HudPlayMode.Battery => (Localization.TagLineBattery, Localization.TitleBattery),
+            HudPlayMode.PowerSaver => (Localization.TagLineSaver, Localization.TitleSaver),
+            _ => (Localization.TagLine, Localization.TitleMode),
+        };
 
         var o = options ?? _animOptions;
 
@@ -141,6 +152,11 @@ public partial class HudWindow : Window
             return;
         }
 
+        // 波纹方向 = 能量方向：充电向外扩散，电池模式向内收拢到电标圆心。
+        // 三圈共用同一个函数签名，直接选方法组，避免把整段时间线复制两遍。
+        Func<AnimationOptions, double, double, Animation> ripple =
+            mode == HudPlayMode.Battery ? HudAnimations.RippleIn : HudAnimations.Ripple;
+
         try
         {
             await Task.WhenAll(
@@ -155,9 +171,9 @@ public partial class HudWindow : Window
                 HudAnimations.SquareForm(o).RunAsync(SquareForm, ct),
                 HudAnimations.TitleHost(o).RunAsync(TitleHost, ct),
                 HudAnimations.NumHost(o).RunAsync(NumHost, ct),
-                HudAnimations.Ripple(o, 1.5, 0.50).RunAsync(RippleInner, ct),
-                HudAnimations.Ripple(o, 2.0, 0.50).RunAsync(RippleMid, ct),
-                HudAnimations.Ripple(o, 2.5, 0.60).RunAsync(RippleOuter, ct),
+                ripple(o, 1.5, 0.50).RunAsync(RippleInner, ct),
+                ripple(o, 2.0, 0.50).RunAsync(RippleMid, ct),
+                ripple(o, 2.5, 0.60).RunAsync(RippleOuter, ct),
                 HudAnimations.RippleRise(o).RunAsync(RippleInnerHost, ct),
                 HudAnimations.RippleRise(o).RunAsync(RippleMidHost, ct),
                 HudAnimations.RippleRise(o).RunAsync(RippleOuterHost, ct));

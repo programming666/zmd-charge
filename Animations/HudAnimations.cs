@@ -55,6 +55,9 @@ public sealed record AnimationOptions
 ///
 /// 以上为 6s 基线时间线。实际播放时：入场段（0→0.42）保持基线绝对时长，
 /// 停留段按 DurationSeconds 拉伸/压缩（见 MapCue）。
+/// 电池模式（拔电）复用同一条时间线，只把三圈波纹整段镜像成「向内收拢」（见 RippleIn），
+/// 文案换成「/// 电池模式」——「能量注入」与「能量流出」共用一套骨骼，一眼能看出是同一套 HUD。
+///
 /// 注意：KeyFrame 的 Cue 必须严格递增（乱序会让某一段被压缩到 30ms，位移看起来像瞬移）。
 /// </summary>
 internal static class HudAnimations
@@ -283,7 +286,32 @@ internal static class HudAnimations
         return a;
     }
 
-    // ---------------- 简化版（拔电显示电量） ----------------
+    /// <summary>
+    /// 单圈波纹（收拢态 · 电池模式）：充电是「由内向外扩散」（能量注入），
+    /// 电池模式整段镜像——环先在最外层浮现，再向电标圆心收拢并被吸进去，
+    /// 暗示能量正在被消耗 / 流出。缓动也镜像：扩散用 KS_Out（先快后慢），
+    /// 收拢用 KS_In（先慢后快）。三圈收拢终点按顺序略微错开，避免叠成一坨。
+    /// </summary>
+    public static Animation RippleIn(AnimationOptions o, double endScale, double peakOp)
+    {
+        double spread = Math.Clamp(o.RippleSpread, 0.5d, 1.5d);
+        double intensity = Math.Clamp(o.RippleIntensity, 0d, 2d);
+        double target = endScale * spread;
+        double peak = Math.Min(1d, peakOp * intensity);
+        double inner = 0.10d + endScale * 0.032d;  // 1.5→0.148 / 2.0→0.164 / 2.5→0.180
+
+        var a = New(o);
+        a.Children.Add(KF(MapCue(o, 0d), null, Op(0), SX(target), SY(target)));
+        a.Children.Add(KF(MapCue(o, TExpand), KS_Out, Op(0), SX(target), SY(target)));
+        // 环是在最外层「浮现」的，若沿用扩散那 0.02 的淡入窗口，一整圈大环会在 0.1s 内闪出来；
+        // 所以淡入拉长到 0.07（约 0.4s）并同步先收一点点，出场才不带爆闪。
+        a.Children.Add(KF(MapCue(o, TExpand + 0.07), KS_In, Op(peak), SX(target * 0.86d), SY(target * 0.86d)));
+        a.Children.Add(KF(MapCue(o, THoldB), KS_InOut, Op(peak), SX(inner), SY(inner)));
+        a.Children.Add(KF(MapCue(o, TContract), KS_InOut, Op(0), SX(inner * 0.30d), SY(inner * 0.30d)));
+        return a;
+    }
+
+    // ---------------- 简化版（省电模式关闭等快速电量提示） ----------------
     // 只弹"电量圆胶囊"：无电标先出、无工业模式矩形、无波纹。直接全圆胶囊 + 电量内容。
 
     private const double SimpleBaselineSeconds = 5.0;
